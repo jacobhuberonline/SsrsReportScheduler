@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace SsrsReportScheduler.Options;
 
 public sealed class SchedulerOptions

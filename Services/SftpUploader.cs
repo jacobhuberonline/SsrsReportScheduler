@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Renci.SshNet;
@@ -9,9 +5,6 @@ using SsrsReportScheduler.Options;
 
 namespace SsrsReportScheduler.Services;
 
-/// <summary>
-/// Wraps SSH.NET SFTP operations and shields the rest of the app from connection management.
-/// </summary>
 public sealed class SftpUploader
 {
     private readonly IOptions<SftpOptions> _options;
@@ -23,10 +16,13 @@ public sealed class SftpUploader
         _logger = logger;
     }
 
-    public async Task<string> UploadAsync(byte[] content, string? overrideDirectory, string remoteFileName, CancellationToken cancellationToken)
+    public async Task<string> UploadAsync(
+    byte[] content,
+    string remoteFileName,
+    CancellationToken cancellationToken)
     {
         var settings = _options.Value;
-        var targetDirectory = NormalizeRemotePath(string.IsNullOrWhiteSpace(overrideDirectory) ? settings.RemoteDirectory : overrideDirectory);
+        var targetDirectory = NormalizeRemotePath(settings.RemoteDirectory);
         var remotePath = CombineRemotePath(targetDirectory, remoteFileName);
 
         _logger.LogInformation(

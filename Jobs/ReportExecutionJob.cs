@@ -1,8 +1,4 @@
-using System;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quartz;
@@ -12,9 +8,6 @@ using SsrsReportScheduler.Services;
 
 namespace SsrsReportScheduler.Jobs;
 
-/// <summary>
-/// Quartz job that executes a single SSRS report run and handles persistence + upload.
-/// </summary>
 public sealed class ReportExecutionJob : IJob
 {
     public const string TaskNameKey = "TaskName";
@@ -72,7 +65,6 @@ public sealed class ReportExecutionJob : IJob
 
             var remotePath = await _sftpUploader.UploadAsync(
                 renderResult.Content,
-                taskConfig.RemoteDirectory,
                 Path.GetFileName(localPath),
                 cancellationToken).ConfigureAwait(false);
 
