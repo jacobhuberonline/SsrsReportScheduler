@@ -18,6 +18,8 @@ builder.Services.Configure<OutputOptions>(builder.Configuration.GetSection("Outp
 builder.Services.Configure<SftpOptions>(builder.Configuration.GetSection("Sftp"));
 builder.Services.Configure<SchedulerOptions>(builder.Configuration.GetSection("Scheduler"));
 builder.Services.Configure<BedrockOptions>(builder.Configuration.GetSection("Bedrock"));
+builder.Services.Configure<SystemOptionsApiOptions>(builder.Configuration.GetSection("SystemOptionsApi"));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 
 builder.Services.AddHttpClient(SsrsReportClient.HttpClientName)
     .ConfigureHttpClient((sp, client) =>
@@ -42,17 +44,45 @@ builder.Services.AddHttpClient(SsrsReportClient.HttpClientName)
         };
     });
 
+builder.Services.AddHttpClient(SystemOptionsApiClient.HttpClientName)
+    .ConfigureHttpClient((sp, client) =>
+    {
+        var o = sp.GetRequiredService<IOptions<SystemOptionsApiOptions>>().Value;
+        if (!string.IsNullOrWhiteSpace(o.BaseUrl))
+        {
+            client.BaseAddress = new Uri(o.BaseUrl.TrimEnd('/') + "/");
+        }
+
+        client.Timeout = TimeSpan.FromSeconds(Math.Max(5, o.TimeoutSeconds));
+    });
+
 builder.Services.AddSingleton<SsrsReportClient>();
 builder.Services.AddSingleton<SftpUploader>();
 builder.Services.AddSingleton<CronConverter>();
+builder.Services.AddSingleton<SystemOptionsApiClient>();
+builder.Services.AddSingleton<IReportTaskSource, ApiBackedReportTaskSource>();
+builder.Services.AddSingleton<EmailSender>();
 
 builder.Services.AddQuartz(q =>
 {
-    var cronConverter = builder.Services.BuildServiceProvider().GetRequiredService<CronConverter>();
-    var schedulerOptions = builder.Configuration.GetSection("Scheduler").Get<SchedulerOptions>() ?? new SchedulerOptions();
-    var invalidCronExpressions = new List<(string TaskName, string CronExpression)>();
+    using var scope = builder.Services.BuildServiceProvider();
+    var cronConverter = scope.GetRequiredService<CronConverter>();
+    var reportTaskSource = scope.GetRequiredService<IReportTaskSource>();
+    var loggerFactory = scope.GetRequiredService<ILoggerFactory>();
+    var logger = loggerFactory.CreateLogger("SchedulerConfiguration");
 
-    foreach (var task in schedulerOptions.ReportTasks)
+    IReadOnlyList<ReportTaskOptions> tasks;
+    try
+    {
+        tasks = reportTaskSource.GetReportTasksAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unable to load report tasks. No Quartz jobs will be scheduled.");
+        return;
+    }
+
+    foreach (var task in tasks)
     {
         if (string.IsNullOrWhiteSpace(task.Name))
         {
@@ -66,14 +96,13 @@ builder.Services.AddQuartz(q =>
         }
         catch (Exception ex)
         {
-            var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILoggerFactory>().CreateLogger("CronConverter");
-            logger.LogError($"Error converting cron description for task {task.Name}: {ex.Message}");
+            logger.LogError(ex, "Error converting cron description for task {TaskName}.", task.Name);
             continue;
         }
 
         if (!CronExpression.IsValidExpression(cronExpression))
         {
-            invalidCronExpressions.Add((task.Name, cronExpression));
+            logger.LogError("Skipping task {TaskName} due to invalid cron expression '{CronExpression}'.", task.Name, cronExpression);
             continue;
         }
 
@@ -101,16 +130,6 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
 var host = builder.Build();
-
-var invalidCronExpressions = new List<(string TaskName, string CronExpression)>();
-if (invalidCronExpressions.Count > 0)
-{
-    var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Configuration");
-    foreach (var (taskName, cronExpression) in invalidCronExpressions)
-    {
-        logger.LogError("Skipping task {TaskName} due to invalid cron expression '{CronExpression}'.", taskName, cronExpression);
-    }
-}
 
 host.Services.GetRequiredService<ILoggerFactory>()
     .CreateLogger("Startup")

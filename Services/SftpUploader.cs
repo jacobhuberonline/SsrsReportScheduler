@@ -17,12 +17,15 @@ public sealed class SftpUploader
     }
 
     public async Task<string> UploadAsync(
-    byte[] content,
-    string remoteFileName,
-    CancellationToken cancellationToken)
+        byte[] content,
+        string remoteFileName,
+        CancellationToken cancellationToken,
+        string? remoteDirectoryOverride = null)
     {
         var settings = _options.Value;
-        var targetDirectory = NormalizeRemotePath(settings.RemoteDirectory);
+        var targetDirectory = NormalizeRemotePath(string.IsNullOrWhiteSpace(remoteDirectoryOverride)
+            ? settings.RemoteDirectory
+            : remoteDirectoryOverride);
         var remotePath = CombineRemotePath(targetDirectory, remoteFileName);
 
         _logger.LogInformation(

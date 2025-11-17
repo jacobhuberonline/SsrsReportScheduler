@@ -1,3 +1,5 @@
+using SsrsReportScheduler.Models;
+
 namespace SsrsReportScheduler.Options;
 
 public sealed class ReportTaskOptions
@@ -6,4 +8,5 @@ public sealed class ReportTaskOptions
     public string Format { get; set; } = "PDF";
     public string CronExpression { get; set; } = "0 0 6 * * ?";
     public Dictionary<string, string> Parameters { get; set; } = new();
+    public ReportDeliveryOptions Delivery { get; set; } = new();
 }
